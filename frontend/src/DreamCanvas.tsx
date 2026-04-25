@@ -12,7 +12,13 @@ interface EEGData {
 }
 
 interface DreamFrame {
+  source: "csv" | "simulated";
   eeg: EEGData;
+  analysis?: {
+    stage: string;
+    intensity: number;
+    mood: string;
+  };
   stage: string;
   mood: string;
   intensity: number;
@@ -20,7 +26,7 @@ interface DreamFrame {
   phase?: string;
   frame?: number;
   image: string | null;
-  error?: string;
+  error?: string | null;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -110,6 +116,62 @@ function StageBadge({ stage }: { stage: string }) {
         animation: "slide-in 0.4s ease",
       }}
     >
+      {label}
+    </div>
+  );
+}
+
+function SourceBadge({ source }: { source?: DreamFrame["source"] }) {
+  if (!source) {
+    return (
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "4px 10px",
+          border: "1px solid #1a1a3e",
+          borderRadius: 3,
+          background: "#080818",
+          color: "#4a5080",
+          fontSize: 10,
+          fontFamily: "var(--font-hud)",
+          letterSpacing: 2,
+        }}
+      >
+        AWAITING
+      </div>
+    );
+  }
+
+  const isCsv = source === "csv";
+  const color = isCsv ? "#00ff88" : "#ff6a00";
+  const label = isCsv ? "CSV DATA" : "SIMULATED";
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "4px 10px",
+        border: `1px solid ${color}66`,
+        borderRadius: 3,
+        background: `${color}11`,
+        color,
+        fontSize: 10,
+        fontFamily: "var(--font-hud)",
+        letterSpacing: 2,
+      }}
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: "50%",
+          background: color,
+          boxShadow: `0 0 8px ${color}`,
+        }}
+      />
       {label}
     </div>
   );
@@ -322,6 +384,7 @@ export default function DreamCanvas() {
             SYNC{" "}
             <span style={{ color: "#00ff88" }}>{lastUpdate}</span>
           </span>
+          <SourceBadge source={frame?.source} />
 
           {/* ── Start / Stop button ── */}
           <button
@@ -378,6 +441,13 @@ export default function DreamCanvas() {
             }}
           >
             EEG SIGNALS
+          </div>
+
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 9, color: "#4a5080", letterSpacing: 2, marginBottom: 8 }}>
+              DATA SOURCE
+            </div>
+            <SourceBadge source={frame?.source} />
           </div>
 
           {EEG_BANDS.map(({ key, label, color }) => (
@@ -699,7 +769,7 @@ export default function DreamCanvas() {
                 lineHeight: 1.6,
               }}
             >
-              ⚠ {frame.error}
+              {frame.error}
             </div>
           )}
         </aside>
@@ -720,7 +790,7 @@ export default function DreamCanvas() {
         }}
       >
         <span>CLOUDFLARE WORKERS AI  ·  STABLE DIFFUSION XL</span>
-        <span>EEG SIM v2.0  ·  DREAM GEN  ·  TEMPORAL COHERENCE</span>
+        <span>EEG CSV/SIM  ·  DREAM GEN  ·  TEMPORAL COHERENCE</span>
         <span style={{ color: "#1a1a3e" }}>◈◈◈</span>
       </footer>
 

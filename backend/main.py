@@ -1,7 +1,8 @@
 """
 Dream Generator — FastAPI backend
 ==================================
-Streams AI-generated dream images derived from simulated EEG brain activity.
+Streams AI-generated dream images derived from real CSV or simulated EEG
+brain activity.
 
 Endpoints
 ---------
@@ -9,6 +10,8 @@ GET  /              → health check
 GET  /session/sample → single EEG + analysis + prompt cycle (no image)
 WS   /ws/dream      → real-time dream stream with pause/resume control
 """
+
+from __future__ import annotations
 
 import asyncio
 import base64
@@ -27,7 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ai.image_generator import generate_image
 from ai.prompt_builder import build_prompt, DreamSession
 from eeg.analyzer import analyze_eeg
-from eeg.simulator import simulate_eeg, EEGContinuousSimulator
+from eeg.csv_reader import EEGDataSource
 from core.config import settings
 
 logging.basicConfig(
@@ -38,6 +41,8 @@ logger = logging.getLogger("dream_generator")
 
 IMAGES_DIR = Path(__file__).parent / "assets" / "generated_images"
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
+sample_data_source = EEGDataSource()
 
 
 @asynccontextmanager
@@ -69,14 +74,16 @@ app.add_middleware(
 
 async def _run_dream_cycle(
     session: DreamSession,
-    simulator: EEGContinuousSimulator,
+    data_source: EEGDataSource,
+    include_image: bool = True,
 ) -> dict:
     """
     One complete EEG → analysis → prompt → image pipeline.
     Uses session state for temporal continuity and per-frame seed for
     visual consistency.
     """
-    eeg = simulator.next()
+    sample = data_source.next()
+    eeg = sample.reading
     analysis = analyze_eeg(eeg)
 
     # Capture seed before advance (frame N)
@@ -84,27 +91,39 @@ async def _run_dream_cycle(
 
     prompt_data = build_prompt(analysis, session)  # advances session internally
 
-    image_bytes = await generate_image(
-        prompt=prompt_data["prompt"],
-        negative_prompt=prompt_data["negative_prompt"],
-        seed=frame_seed,
-    )
-    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+    image_b64: str | None = None
+    error: str | None = None
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:19]
-    filename = f"{timestamp}_{analysis.stage}_{analysis.mood}.png"
-    (IMAGES_DIR / filename).write_bytes(image_bytes)
-    logger.info("Saved image → %s", filename)
+    if include_image:
+        try:
+            image_bytes = await generate_image(
+                prompt=prompt_data["prompt"],
+                negative_prompt=prompt_data["negative_prompt"],
+                seed=frame_seed,
+            )
+            image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:19]
+            filename = f"{timestamp}_{analysis.stage}_{analysis.mood}.png"
+            (IMAGES_DIR / filename).write_bytes(image_bytes)
+            logger.info("Saved image → %s", filename)
+        except Exception as exc:
+            logger.error("Image generation failed; continuing stream: %s", exc)
+            error = str(exc)
 
     return {
+        "source": sample.source,
         "eeg": eeg.to_dict(),
+        "analysis": analysis.to_dict(),
         "stage": analysis.stage,
         "mood": analysis.mood,
         "intensity": analysis.intensity,
         "prompt": prompt_data["prompt"],
+        "negative_prompt": prompt_data["negative_prompt"],
         "phase": session.current_phase,
         "frame": session.frame,
         "image": image_b64,
+        "error": error,
     }
 
 
@@ -116,16 +135,17 @@ async def health_check():
 @app.get("/session/sample", tags=["session"])
 async def sample_session():
     """Single EEG + analysis + prompt cycle without image generation."""
-    eeg = simulate_eeg()
-    analysis = analyze_eeg(eeg)
     session = DreamSession()
-    prompt_data = build_prompt(analysis, session)
+    return await _run_dream_cycle(session, sample_data_source, include_image=False)
+
+
+@app.post("/session/reset-data", tags=["session"])
+async def reset_session_data():
+    """Reset CSV-backed sampling to the first CSV row."""
+    sample_data_source.reset_csv()
     return {
-        "eeg": eeg.to_dict(),
-        **analysis.to_dict(),
-        "prompt": prompt_data["prompt"],
-        "negative_prompt": prompt_data["negative_prompt"],
-        "phase": session.current_phase,
+        "status": "ok",
+        "message": "CSV data position reset.",
     }
 
 
@@ -145,7 +165,7 @@ async def dream_websocket(websocket: WebSocket):
     logger.info("WebSocket client connected: %s", websocket.client)
 
     session = DreamSession()
-    simulator = EEGContinuousSimulator()
+    data_source = EEGDataSource()
     stop_event = asyncio.Event()
     pause_event = asyncio.Event()
     pause_event.set()           # not paused at start
@@ -191,7 +211,7 @@ async def dream_websocket(websocket: WebSocket):
             interval = random.uniform(settings.WS_INTERVAL_MIN, settings.WS_INTERVAL_MAX)
 
             cycle_task: asyncio.Task = asyncio.create_task(
-                _run_dream_cycle(session, simulator)
+                _run_dream_cycle(session, data_source)
             )
             stop_task: asyncio.Task = asyncio.create_task(stop_event.wait())
             pause_task: asyncio.Task = asyncio.create_task(pause_requested.wait())
@@ -222,28 +242,6 @@ async def dream_websocket(websocket: WebSocket):
 
             try:
                 payload = cycle_task.result()
-            except RuntimeError as exc:
-                logger.error("Dream cycle error: %s", exc)
-                eeg = simulator.next()
-                analysis = analyze_eeg(eeg)
-                prompt_data = build_prompt(analysis, session)
-                fallback = {
-                    "eeg": eeg.to_dict(),
-                    "stage": analysis.stage,
-                    "mood": analysis.mood,
-                    "intensity": analysis.intensity,
-                    "prompt": prompt_data["prompt"],
-                    "phase": session.current_phase,
-                    "frame": session.frame,
-                    "image": None,
-                    "error": "Image generation temporarily unavailable. Retrying…",
-                }
-                try:
-                    await websocket.send_text(json.dumps(fallback))
-                except Exception:
-                    break
-                await asyncio.sleep(interval)
-                continue
             except Exception as exc:
                 logger.exception("Unexpected error in dream cycle: %s", exc)
                 await asyncio.sleep(interval)

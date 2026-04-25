@@ -9,6 +9,8 @@ continuity. Style anchors (volumetric neon, cinematic, futuristic surreal) are
 fixed in every frame so SD maintains a consistent aesthetic direction.
 """
 
+from __future__ import annotations
+
 import random
 from dataclasses import dataclass, field
 from eeg.analyzer import EEGAnalysis

@@ -13,6 +13,8 @@ Frequency bands (Hz):
   gamma  30  – 100 → high cognitive load / vivid dreaming
 """
 
+from __future__ import annotations
+
 import random
 from dataclasses import dataclass
 

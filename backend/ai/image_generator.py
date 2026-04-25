@@ -13,6 +13,8 @@ times.  On permanent failures (4xx, credential errors) it raises immediately.
 The caller is responsible for converting bytes to base64 for transport.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 
