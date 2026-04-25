@@ -36,12 +36,12 @@ main.py  (FastAPI + WebSocket handler)
 
 Produces synthetic EEG readings modelled on real physiological frequency bands:
 
-| Band | Hz range | Role |
-|---|---|---|
-| Delta | 0.5 – 4 | Deep slow-wave sleep |
-| Theta | 4 – 8 | Drowsiness, light sleep, REM |
-| Alpha | 8 – 13 | Relaxed wakefulness |
-| Beta | 13 – 30 | Active arousal |
+| Band  | Hz range | Role                                |
+| ----- | -------- | ----------------------------------- |
+| Delta | 0.5 – 4  | Deep slow-wave sleep                |
+| Theta | 4 – 8    | Drowsiness, light sleep, REM        |
+| Alpha | 8 – 13   | Relaxed wakefulness                 |
+| Beta  | 13 – 30  | Active arousal                      |
 | Gamma | 30 – 100 | High cognitive load, vivid dreaming |
 
 Each reading also includes `heart_rate` (BPM) and `movement` (body movement index 0.0 – 1.0).
@@ -65,17 +65,20 @@ Takes an `EEGReading` and returns an `EEGAnalysis` with three fields:
 The core of the dream continuity system. Contains two key data structures:
 
 **`DreamIdentity`** — created once per session at the first frame and never changes:
+
 - `archetype` — the base scene (e.g. "submerged obsidian cathedral filled with bioluminescent veins")
 - `composition` — camera framing (e.g. "extreme wide shot, epic scale, rule of thirds")
 - `color_palette` — dominant hues (e.g. "deep indigo and cold bioluminescent teal")
 
 **`DreamSession`** — tracks mutable state across frames:
+
 - `frame` — frame counter
 - `phase_index` — dream narrative phase (0–3), advances every 8 frames
 - `base_seed` — random integer set at session start; used to derive per-frame seeds
 - `prev_stage` / `prev_mood` — used to detect transitions between states
 
 **`build_prompt(analysis, session)`** composes the final prompt by combining:
+
 1. The current dream phase narrative ("as the dream begins to form", "deepening into the dream", etc.)
 2. An intensity descriptor based on the current EEG arousal level
 3. The locked archetype from `DreamIdentity`
@@ -101,11 +104,13 @@ FastAPI application with three endpoints:
 **`GET /session/sample`** — Runs one EEG + analysis + prompt cycle without image generation. Useful for testing the pipeline quickly without consuming Cloudflare API credits.
 
 **`WS /ws/dream`** — The main dream stream. Per-connection state:
+
 - One `DreamSession` + one `EEGContinuousSimulator`, both created at connection time
 - Two asyncio events: `stop_event` (disconnect), `pause_requested` (pause signal)
 - A background `_message_listener` coroutine that reads client control messages
 
 Each loop iteration races three asyncio tasks:
+
 1. `cycle_task` — runs the full EEG → analysis → prompt → image pipeline
 2. `stop_task` — resolves when the client disconnects
 3. `pause_task` — resolves when the client sends `{"action": "pause"}`
@@ -116,7 +121,15 @@ Each successful frame payload contains:
 
 ```json
 {
-  "eeg": { "delta": 0.82, "theta": 0.12, "alpha": 0.05, "beta": 0.03, "gamma": 0.01, "heart_rate": 52, "movement": 0.02 },
+  "eeg": {
+    "delta": 0.82,
+    "theta": 0.12,
+    "alpha": 0.05,
+    "beta": 0.03,
+    "gamma": 0.01,
+    "heart_rate": 52,
+    "movement": 0.02
+  },
   "stage": "deep_sleep",
   "mood": "calm",
   "intensity": 0.04,
@@ -187,14 +200,14 @@ curl http://localhost:8000/session/sample
 
 ## Dependencies
 
-| Package | Version | Purpose |
-|---|---|---|
-| fastapi | 0.115.5 | Web framework and WebSocket support |
-| uvicorn | 0.32.1 | ASGI server |
-| httpx | 0.27.2 | Async HTTP client for Cloudflare API |
-| websockets | 13.1 | WebSocket protocol implementation |
-| python-dotenv | 1.0.1 | `.env` file loading |
-| numpy | 2.1.3 | Numerical utilities |
+| Package       | Version | Purpose                              |
+| ------------- | ------- | ------------------------------------ |
+| fastapi       | 0.115.5 | Web framework and WebSocket support  |
+| uvicorn       | 0.32.1  | ASGI server                          |
+| httpx         | 0.27.2  | Async HTTP client for Cloudflare API |
+| websockets    | 13.1    | WebSocket protocol implementation    |
+| python-dotenv | 1.0.1   | `.env` file loading                  |
+| numpy         | 2.1.3   | Numerical utilities                  |
 
 ---
 
@@ -202,12 +215,12 @@ curl http://localhost:8000/session/sample
 
 All settings are in `core/config.py` and read from environment variables:
 
-| Setting | Default | Description |
-|---|---|---|
-| `CLOUDFLARE_ACCOUNT_ID` | — | Cloudflare account ID |
-| `CLOUDFLARE_API_TOKEN` | — | Cloudflare API token |
-| `CF_MODEL` | `@cf/stabilityai/stable-diffusion-xl-base-1.0` | Workers AI model |
-| `IMAGE_GEN_MAX_RETRIES` | 3 | Retry attempts on transient errors |
-| `IMAGE_GEN_RETRY_DELAY` | 1.5s | Delay between retries |
-| `WS_INTERVAL_MIN` | 2.0s | Minimum pause between frames |
-| `WS_INTERVAL_MAX` | 3.0s | Maximum pause between frames |
+| Setting                 | Default                                        | Description                        |
+| ----------------------- | ---------------------------------------------- | ---------------------------------- |
+| `CLOUDFLARE_ACCOUNT_ID` | —                                              | Cloudflare account ID              |
+| `CLOUDFLARE_API_TOKEN`  | —                                              | Cloudflare API token               |
+| `CF_MODEL`              | `@cf/stabilityai/stable-diffusion-xl-base-1.0` | Workers AI model                   |
+| `IMAGE_GEN_MAX_RETRIES` | 3                                              | Retry attempts on transient errors |
+| `IMAGE_GEN_RETRY_DELAY` | 1.5s                                           | Delay between retries              |
+| `WS_INTERVAL_MIN`       | 2.0s                                           | Minimum pause between frames       |
+| `WS_INTERVAL_MAX`       | 3.0s                                           | Maximum pause between frames       |
