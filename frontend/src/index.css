@@ -1,0 +1,94 @@
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Share+Tech+Mono&display=swap");
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg:        #00000f;
+  --surface:   #080818;
+  --border:    #1a1a3e;
+  --cyan:      #00e5ff;
+  --purple:    #7c3aed;
+  --pink:      #ff007f;
+  --green:     #00ff88;
+  --dim:       #3a3a6a;
+  --text:      #c8d0e8;
+  --text-dim:  #4a5080;
+  --font-hud:  "Orbitron", monospace;
+  --font-mono: "Share Tech Mono", monospace;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  overflow: hidden;
+}
+
+/* ── Scanline overlay ─────────────────────────────────── */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 229, 255, 0.015) 2px,
+    rgba(0, 229, 255, 0.015) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── Animations ───────────────────────────────────────── */
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(0, 229, 255, 0.4); }
+  70%  { box-shadow: 0 0 0 12px rgba(0, 229, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 229, 255, 0); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bar-grow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+@keyframes flicker {
+  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
+  20%, 24%, 55%                           { opacity: 0.6; }
+}
+
+@keyframes grid-move {
+  from { background-position: 0 0; }
+  to   { background-position: 40px 40px; }
+}
+
+@keyframes image-fade {
+  from { opacity: 0; filter: brightness(0.4) blur(8px); }
+  to   { opacity: 1; filter: brightness(1)   blur(0px); }
+}
+
+@keyframes crossfade-in {
+  from { opacity: 0; filter: blur(12px) brightness(0.3) saturate(0.5); }
+  to   { opacity: 1; filter: blur(0px)  brightness(1)   saturate(1);   }
+}
+
+@keyframes crossfade-out {
+  from { opacity: 1; filter: blur(0px) brightness(1); }
+  to   { opacity: 0; filter: blur(6px) brightness(0.5); }
+}
