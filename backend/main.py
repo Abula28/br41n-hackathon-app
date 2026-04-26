@@ -120,6 +120,8 @@ async def _run_dream_cycle(
         "intensity": analysis.intensity,
         "prompt": prompt_data["prompt"],
         "negative_prompt": prompt_data["negative_prompt"],
+        "selected_prompt_id": prompt_data["selected_prompt_id"],
+        "world_name": prompt_data["world_name"],
         "phase": session.current_phase,
         "frame": session.frame,
         "image": image_b64,

@@ -1,12 +1,15 @@
 """
 Prompt Builder
 --------------
-Converts an EEGAnalysis into an evolving, cinematically consistent text prompt.
+Maps EEG analysis to one of six fixed dream-world prompts using deterministic
+rules based on sleep stage, mood, and intensity.
 
-A DreamSession persists across frames. Each call to build_prompt() evolves the
-prompt incrementally — the scene morphs rather than jumps, producing visual
-continuity. Style anchors (volumetric neon, cinematic, futuristic surreal) are
-fixed in every frame so SD maintains a consistent aesthetic direction.
+Each world has a clear visual identity designed for a centered walking-path
+perspective, so the generated image always feels like an environment the viewer
+is walking through.
+
+DreamSession is kept for per-connection state: seed derivation, frame counting,
+and dream-phase narrative progression.
 """
 
 from __future__ import annotations
@@ -16,14 +19,46 @@ from dataclasses import dataclass, field
 from eeg.analyzer import EEGAnalysis
 
 # ---------------------------------------------------------------------------
-# Fixed style anchors — appear in EVERY prompt for visual consistency
+# Six fixed world prompts — selected deterministically from EEG state
 # ---------------------------------------------------------------------------
 
-_STYLE_ANCHORS = (
-    "cinematic volumetric lighting, neon chromatic glow, "
-    "futuristic surreal dreamscape, ultra-detailed 8k, "
-    "photorealistic atmosphere, masterpiece, artstation"
-)
+_WORLD_PROMPTS: dict[int, str] = {
+    1: (
+        "surreal dream landscape with floating islands, glowing sky, fantasy pathway, "
+        "cinematic perspective, vibrant colors, soft clouds, ultra detailed, 8k"
+    ),
+    2: (
+        "coastal walkway toward ocean sunset, golden hour lighting, waves and cliffs, "
+        "centered path perspective, cinematic colors, dreamy atmosphere, ultra detailed, 8k"
+    ),
+    3: (
+        "cyberpunk neon city street, glowing signs, rain reflections, centered road perspective, "
+        "cinematic night lighting, purple blue neon atmosphere, ultra detailed, 8k"
+    ),
+    4: (
+        "modern cozy house interior hallway with open view to garden, centered walking perspective, "
+        "warm lighting, wooden floor, soft sunlight, cinematic composition, ultra detailed, 8k"
+    ),
+    5: (
+        "sunny summer park path, green grass, colorful flowers, trees on both sides, "
+        "centered walking path perspective, warm sunlight, peaceful atmosphere, "
+        "cinematic composition, ultra detailed, 8k"
+    ),
+    6: (
+        "cinematic winter forest path, snow covered trees, centered walking path perspective, "
+        "soft fog, blue cold atmosphere, ground level camera, leading lines, "
+        "ultra detailed, photorealistic, 8k, cinematic lighting"
+    ),
+}
+
+_WORLD_NAMES: dict[int, str] = {
+    1: "Floating Islands",
+    2: "Coastal Sunset",
+    3: "Neon City",
+    4: "Cozy Hallway",
+    5: "Summer Park",
+    6: "Winter Forest",
+}
 
 _NEGATIVE_PROMPT = (
     "blurry, low quality, watermark, text, signature, ugly, deformed, "
@@ -32,107 +67,7 @@ _NEGATIVE_PROMPT = (
 )
 
 # ---------------------------------------------------------------------------
-# Base dream archetypes — one chosen at session start, persistent all session
-# ---------------------------------------------------------------------------
-
-_ARCHETYPES: dict[str, list[str]] = {
-    "deep_sleep": [
-        "submerged obsidian cathedral filled with bioluminescent veins",
-        "infinite crystalline abyss glowing from within",
-        "ancient frozen palace suspended in dark space",
-        "colossal underwater ruin wrapped in cold blue light",
-    ],
-    "light_sleep": [
-        "floating island archipelago dissolving into violet mist",
-        "half-melted clockwork city suspended at dusk",
-        "fog-shrouded coastline where reality bleeds into watercolor",
-        "spiraling greenhouse tower drifting above silent clouds",
-    ],
-    "rem": [
-        "fractal alien metropolis beneath twin neon suns",
-        "impossible staircase city folded through a nebula",
-        "living organic architecture breathing with neon light",
-        "mirrored labyrinth with dimensions folding into each other",
-    ],
-    "transition": [
-        "threshold portal between two colliding worlds",
-        "bridge of liquid starlight over a void of galaxies",
-        "corridor of shifting doorways each opening to another reality",
-        "lone figure at the edge of a universe being born",
-    ],
-}
-
-# ---------------------------------------------------------------------------
-# Dominant color palettes per archetype stage — fixed for session
-# ---------------------------------------------------------------------------
-
-_PALETTES: dict[str, list[str]] = {
-    "deep_sleep": [
-        "deep indigo and cold bioluminescent teal",
-        "midnight blue and faint violet bioluminescence",
-        "obsidian black and electric indigo",
-    ],
-    "light_sleep": [
-        "soft lavender and warm amber haze",
-        "dusty rose and pale gold shimmer",
-        "muted violet and soft cerulean glow",
-    ],
-    "rem": [
-        "electric magenta and neon cyan",
-        "plasma orange and ultraviolet blue",
-        "chromatic acid green and deep crimson",
-    ],
-    "transition": [
-        "iridescent violet and liquid gold",
-        "prismatic silver and aurora green",
-        "deep teal and burning amber",
-    ],
-}
-
-# ---------------------------------------------------------------------------
-# Mood atmosphere layers — evolve per frame based on current EEG mood
-# ---------------------------------------------------------------------------
-
-_MOOD_ATMOSPHERE: dict[str, list[str]] = {
-    "calm": [
-        "bathed in soft indigo moonlight, perfectly still, quiet majesty",
-        "suffused with deep violet radiance, serene and timeless",
-        "glowing faintly with cold bioluminescence, absolute silence",
-    ],
-    "soft": [
-        "wrapped in pastel aurora light, hazy and tender",
-        "veiled in iridescent mist with warm golden undertones",
-        "shimmering with soft prismatic refraction, dreamlike",
-    ],
-    "vivid": [
-        "electrified with hyper-saturated neon plasma, intensely alive",
-        "blazing with chromatic aberration, colors bleeding through space",
-        "pulsing with electric cyan and magenta energy waves",
-    ],
-    "abstract": [
-        "fractured into non-euclidean geometries, layered reality planes",
-        "dissolving into symbolic shapes and fragmented dimensions",
-        "tessellated across impossible space-time folds",
-    ],
-    "chaotic": [
-        "shattered by turbulent energy vortices, kinetic explosion of light",
-        "torn by recursive fractal storms, violent chromatic distortion",
-        "overwhelmed by cascading dimensional collapse",
-    ],
-}
-
-# ---------------------------------------------------------------------------
-# Intensity descriptors
-# ---------------------------------------------------------------------------
-
-_INTENSITY_DESCRIPTORS: dict[str, list[str]] = {
-    "low":  ["barely visible traces of", "ghostly outline of", "whispered suggestion of"],
-    "mid":  ["richly detailed", "glowing presence of", "clearly emerging"],
-    "high": ["blazing manifestation of", "overwhelming surge of", "violently vivid"],
-}
-
-# ---------------------------------------------------------------------------
-# Dream phase narrative arc — advances every ~8 frames
+# Dream phase narrative — advances every ~8 frames
 # ---------------------------------------------------------------------------
 
 PHASE_TRANSITIONS = [
@@ -142,111 +77,92 @@ PHASE_TRANSITIONS = [
     "approaching the edge of waking",
 ]
 
+
 # ---------------------------------------------------------------------------
-# Cinematic composition modifiers — fixed for session
+# Prompt selection — deterministic, driven by EEG analysis
 # ---------------------------------------------------------------------------
 
-_COMPOSITIONS = [
-    "extreme wide shot, epic scale, rule of thirds",
-    "dramatic low angle, towering perspective, deep focus",
-    "bird's eye view, infinite depth, overhead",
-    "Dutch angle, disorienting beauty, asymmetric framing",
-    "medium shot, intimate scale, centered symmetry",
-]
+def _select_prompt(analysis: EEGAnalysis) -> tuple[int, str, str]:
+    """
+    Map EEG analysis to a world prompt ID.
+
+    Priority order (first match wins):
+      1. chaotic mood                         → Neon City (high arousal)
+      2. REM + vivid mood                     → Floating Islands
+      3. calm mood                            → Summer Park
+      4. deep_sleep stage                     → Winter Forest
+      5. light_sleep + soft mood              → Coastal Sunset
+      6. everything else (transition/abstract)→ Cozy Hallway
+    """
+    stage = analysis.stage
+    mood = analysis.mood
+
+    if mood == "chaotic":
+        pid = 3
+    elif stage == "rem" and mood == "vivid":
+        pid = 1
+    elif mood == "calm":
+        pid = 5
+    elif stage == "deep_sleep":
+        pid = 6
+    elif stage == "light_sleep" and mood == "soft":
+        pid = 2
+    else:
+        pid = 4
+
+    return pid, _WORLD_PROMPTS[pid], _WORLD_NAMES[pid]
 
 
-@dataclass
-class DreamIdentity:
-    """Persistent visual identity chosen once at session start."""
-    archetype: str        # base scene — never changes
-    composition: str      # camera framing — never changes
-    color_palette: str    # dominant hues — never changes
-
+# ---------------------------------------------------------------------------
+# Session state — per-connection, persists across frames
+# ---------------------------------------------------------------------------
 
 @dataclass
 class DreamSession:
     """
-    Per-connection temporal state. Pass into build_prompt() each cycle.
-    Maintains dream continuity across frames.
+    Tracks frame count, seed, and dream-phase progression for one WebSocket
+    connection. Prompt content is now fixed per EEG state, so session state
+    is used only for seed derivation and phase narrative.
     """
     frame: int = 0
-    identity: DreamIdentity | None = None
     base_seed: int = field(default_factory=lambda: random.randint(100_000, 999_999))
-    prev_stage: str = ""
-    prev_mood: str = ""
-    phase_index: int = 0  # 0-3
+    phase_index: int = 0  # 0–3
 
     def get_frame_seed(self) -> int:
-        """Slowly varying seed: maintains visual consistency while evolving."""
+        """Slowly varying seed: keeps adjacent frames visually related."""
         return self.base_seed + self.frame * 7
 
     @property
     def current_phase(self) -> str:
         return PHASE_TRANSITIONS[self.phase_index]
 
-    def initialize(self, first_stage: str) -> None:
-        """Called on first frame. Locks the dream identity for the session."""
-        archetype = random.choice(_ARCHETYPES[first_stage])
-        composition = random.choice(_COMPOSITIONS)
-        color_palette = random.choice(_PALETTES[first_stage])
-        self.identity = DreamIdentity(
-            archetype=archetype,
-            composition=composition,
-            color_palette=color_palette,
-        )
-
-    def advance(self, stage: str, mood: str) -> None:
+    def advance(self) -> None:
         self.frame += 1
-        self.prev_stage = stage
-        self.prev_mood = mood
         if self.frame % 8 == 0 and self.phase_index < 3:
             self.phase_index += 1
 
 
-def _intensity_band(intensity: float) -> str:
-    if intensity < 0.33:
-        return "low"
-    if intensity < 0.66:
-        return "mid"
-    return "high"
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
-
-def build_prompt(analysis: EEGAnalysis, session: DreamSession) -> dict[str, str]:
+def build_prompt(analysis: EEGAnalysis, session: DreamSession) -> dict[str, str | int]:
     """
-    Build an evolving SD prompt from EEG analysis + session state.
+    Select the appropriate world prompt for the current EEG state and advance
+    the session by one frame.
 
-    The archetype, composition, and color palette are locked for the session.
-    Atmospherics evolve per-frame with EEG mood and intensity.
-    Stage transitions inject a morphing cue for narrative flow.
+    Returns a dict with:
+        prompt             → positive prompt string
+        negative_prompt    → negative prompt string
+        selected_prompt_id → int 1–6
+        world_name         → human-readable world label
     """
-    if session.identity is None:
-        session.initialize(analysis.stage)
-
-    identity = session.identity
-
-    # Atmosphere varies with mood but stays mood-coherent
-    atmosphere = random.choice(_MOOD_ATMOSPHERE[analysis.mood])
-
-    # Intensity descriptor
-    energy = random.choice(_INTENSITY_DESCRIPTORS[_intensity_band(analysis.intensity)])
-
-    # Stage transition cue — only when stage changes from last frame
-    stage_cue = ""
-    if session.prev_stage and session.prev_stage != analysis.stage:
-        stage_cue = (
-            f", transitioning from {session.prev_stage.replace('_', ' ')} "
-            f"into {analysis.stage.replace('_', ' ')}"
-        )
-
-    prompt = (
-        f"{session.current_phase}, {energy} {identity.archetype}{stage_cue}, "
-        f"{atmosphere}, {identity.color_palette} color palette, "
-        f"{identity.composition}, {_STYLE_ANCHORS}"
-    )
-
-    session.advance(analysis.stage, analysis.mood)
+    prompt_id, prompt_text, world_name = _select_prompt(analysis)
+    session.advance()
 
     return {
-        "prompt": prompt,
+        "prompt": prompt_text,
         "negative_prompt": _NEGATIVE_PROMPT,
+        "selected_prompt_id": prompt_id,
+        "world_name": world_name,
     }

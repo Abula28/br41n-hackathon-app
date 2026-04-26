@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
+import walk1 from "../assets/walk_cycle/walk_1.png";
+import walk2 from "../assets/walk_cycle/walk_2.png";
+import walk3 from "../assets/walk_cycle/walk_3.png";
+import walk4 from "../assets/walk_cycle/walk_4.png";
+
+const WALK_FRAMES = [walk1, walk2, walk3, walk4];
+
 // ── Types ──────────────────────────────────────────────────────────────────
 interface EEGData {
   delta: number;
@@ -23,6 +30,8 @@ interface DreamFrame {
   mood: string;
   intensity: number;
   prompt: string;
+  selected_prompt_id?: number;
+  world_name?: string;
   phase?: string;
   frame?: number;
   image: string | null;
@@ -263,6 +272,41 @@ function DreamPhaseIndicator({ phase }: { phase: string }) {
           {phase.toUpperCase()}
         </div>
       </div>
+    </div>
+  );
+}
+
+function WalkingCharacter() {
+  const [frameIdx, setFrameIdx] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setFrameIdx((i) => (i + 1) % 4), 160);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        bottom: 56,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 6,
+        pointerEvents: "none",
+      }}
+    >
+      <img
+        src={WALK_FRAMES[frameIdx]}
+        alt=""
+        aria-hidden
+        style={{
+          height: 120,
+          imageRendering: "pixelated",
+          transform: frameIdx % 2 === 1 ? "translateY(-5px)" : "translateY(0px)",
+          transition: "transform 0.1s ease",
+          filter: "drop-shadow(0 0 10px rgba(0,229,255,0.6))",
+        }}
+      />
     </div>
   );
 }
@@ -553,6 +597,7 @@ export default function DreamCanvas() {
                 borderLeftWidth:   pos.left   !== undefined ? 2 : 0,
                 borderRightWidth:  pos.right  !== undefined ? 2 : 0,
                 opacity: 0.6,
+                zIndex: 5,
               }}
             />
           ))}
@@ -566,15 +611,12 @@ export default function DreamCanvas() {
               aria-hidden
               style={{
                 position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                maxWidth: "90%",
-                maxHeight: "90%",
-                objectFit: "contain",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
                 animation: "crossfade-out 1.6s ease-in-out forwards",
                 zIndex: 1,
-                borderRadius: 8,
               }}
             />
           )}
@@ -586,15 +628,10 @@ export default function DreamCanvas() {
               alt="Dream"
               style={{
                 position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                maxWidth: "90%",
-                maxHeight: "90%",
-                objectFit: "contain",
-                borderRadius: 8,
-                border: `1px solid ${stageColor}55`,
-                boxShadow: `0 0 40px ${stageColor}33, 0 0 80px ${stageColor}11`,
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
                 animation: "crossfade-in 1.6s ease-in-out forwards",
                 zIndex: 2,
               }}
@@ -629,6 +666,34 @@ export default function DreamCanvas() {
               </span>
             </div>
           )}
+
+          {/* World name overlay */}
+          {frame?.world_name && (
+            <div
+              style={{
+                position: "absolute",
+                top: 24,
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 5,
+                padding: "5px 18px",
+                border: "1px solid #00e5ff55",
+                borderRadius: 4,
+                background: "rgba(4,4,15,0.72)",
+                color: "#00e5ff",
+                fontSize: 11,
+                fontFamily: "var(--font-hud)",
+                letterSpacing: 3,
+                backdropFilter: "blur(4px)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {frame.world_name.toUpperCase()}
+            </div>
+          )}
+
+          {/* Walking character */}
+          <WalkingCharacter />
 
           {/* Paused overlay */}
           {!isGenerating && (
@@ -730,6 +795,24 @@ export default function DreamCanvas() {
               >
                 {frame?.mood ?? "—"}
               </span>
+            </div>
+          </div>
+
+          {/* Dream world */}
+          <div>
+            <div style={{ fontSize: 9, color: "#4a5080", letterSpacing: 2, marginBottom: 8 }}>
+              DREAM WORLD
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "#00e5ff",
+                fontFamily: "var(--font-hud)",
+                letterSpacing: 2,
+                animation: frame?.world_name ? "slide-in 0.4s ease" : "none",
+              }}
+            >
+              {frame?.world_name ? frame.world_name.toUpperCase() : "—"}
             </div>
           </div>
 
